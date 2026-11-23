@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local environment files (the .env.example files are committed instead)
+.env
+.env.*
+!.env.example
+
+# Logs and OS / editor noise
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Tooling scratch folders
+.playwright-mcp/
