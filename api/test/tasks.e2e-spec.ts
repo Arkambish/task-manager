@@ -121,7 +121,9 @@ describe('Tasks API (e2e)', () => {
     it('answers 404 when the task does not exist', async () => {
       const response = await api().get('/tasks/does-not-exist').expect(404);
 
-      expect(response.body.message).toContain('does-not-exist');
+      expect(response.body.message).toBe(
+        'Task not found. It may have been deleted.',
+      );
     });
   });
 
