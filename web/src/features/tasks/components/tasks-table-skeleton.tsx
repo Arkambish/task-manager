@@ -19,7 +19,7 @@ export function TasksTableSkeleton() {
                 <Skeleton className={`h-4 max-w-full ${width}`} />
                 <Skeleton className="mt-2 h-3 w-32" />
               </TableCell>
-              <TableCell>
+              <TableCell className="hidden sm:table-cell">
                 <Skeleton className="h-5 w-20 rounded-full" />
               </TableCell>
               <TableCell className="hidden sm:table-cell">

@@ -43,9 +43,9 @@ export function TasksTable({ tasks, onEdit, onDelete }: TasksTableProps) {
  * so the placeholder has exactly the columns of the real table and nothing
  * moves when the data arrives.
  *
- * Narrow screens: "Due" is hidden below `sm` (the date moves under the
- * title) and "Created" is hidden below `md`, so the table fits a phone
- * without sideways scrolling.
+ * Narrow screens: "Status" and "Due" are hidden below `sm` (both move under
+ * the title, see TaskRow) and "Created" is hidden below `md`, so the table
+ * fits a phone without sideways scrolling.
  */
 export function TasksTableFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -54,7 +54,7 @@ export function TasksTableFrame({ children }: { children: React.ReactNode }) {
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className="pl-4">Task</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead className="hidden sm:table-cell">Status</TableHead>
             <TableHead className="hidden sm:table-cell">Due</TableHead>
             <TableHead className="hidden md:table-cell">Created</TableHead>
             <TableHead className="pr-4">
@@ -91,15 +91,19 @@ function TaskRow({ task, today, onEdit, onDelete }: TaskRowProps) {
             {task.description}
           </p>
         )}
-        {task.dueDate && (
-          <p className="mt-1 text-xs sm:hidden">
-            <span className="text-muted-foreground">Due </span>
-            <DueDate dueDate={task.dueDate} isOverdue={isOverdue} />
-          </p>
-        )}
+        {/* Phones only: status and due date, which have no column there. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:hidden">
+          <StatusBadge status={task.status} />
+          {task.dueDate && (
+            <span>
+              <span className="text-muted-foreground">Due </span>
+              <DueDate dueDate={task.dueDate} isOverdue={isOverdue} />
+            </span>
+          )}
+        </div>
       </TableCell>
 
-      <TableCell>
+      <TableCell className="hidden sm:table-cell">
         <StatusBadge status={task.status} />
       </TableCell>
 
