@@ -40,6 +40,27 @@ export function TasksView() {
     setIsDeleteOpen(true);
   }
 
+  function renderTaskList() {
+    // isPending means "no data yet and no error yet": the first load.
+    if (tasks.isPending) {
+      return <TasksTableSkeleton />;
+    }
+    // The first load failed. The error message above is all there is to show.
+    if (!tasks.data) {
+      return null;
+    }
+    if (tasks.data.length === 0) {
+      return <EmptyState onCreate={openCreateForm} />;
+    }
+    return (
+      <TasksTable
+        tasks={tasks.data}
+        onEdit={openEditForm}
+        onDelete={openDeleteConfirmation}
+      />
+    );
+  }
+
   return (
     <>
       <header className="mb-6 flex items-end justify-between gap-4">
@@ -55,33 +76,33 @@ export function TasksView() {
         </Button>
       </header>
 
-      {/* Exactly one of these four states is shown. */}
-      {tasks.isPending ? (
-        <TasksTableSkeleton />
-      ) : tasks.isError ? (
-        <ApiErrorAlert title="Couldn't load your tasks" error={tasks.error}>
-          <Button
-            variant="outline"
-            className="mt-3 text-foreground"
-            onClick={() => tasks.refetch()}
-            disabled={tasks.isFetching}
+      {/* An error can come with or without data. The first load failing
+          leaves nothing to show. A later refresh failing leaves the tasks
+          loaded earlier, which stay on screen under the message instead of
+          disappearing. */}
+      {tasks.isError && (
+        <div className="mb-4">
+          <ApiErrorAlert
+            title={tasks.data ? "Couldn't refresh your tasks" : "Couldn't load your tasks"}
+            error={tasks.error}
           >
-            <RotateCw
-              aria-hidden="true"
-              className={cn(tasks.isFetching && "animate-spin")}
-            />
-            Try again
-          </Button>
-        </ApiErrorAlert>
-      ) : tasks.data.length === 0 ? (
-        <EmptyState onCreate={openCreateForm} />
-      ) : (
-        <TasksTable
-          tasks={tasks.data}
-          onEdit={openEditForm}
-          onDelete={openDeleteConfirmation}
-        />
+            <Button
+              variant="outline"
+              className="mt-2 text-foreground"
+              onClick={() => tasks.refetch()}
+              disabled={tasks.isFetching}
+            >
+              <RotateCw
+                aria-hidden="true"
+                className={cn(tasks.isFetching && "animate-spin")}
+              />
+              Try again
+            </Button>
+          </ApiErrorAlert>
+        </div>
       )}
+
+      {renderTaskList()}
 
       <TaskFormDialog
         open={isFormOpen}
