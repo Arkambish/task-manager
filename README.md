@@ -186,8 +186,10 @@ Code produced by the CLIs (`nest new`, `create-next-app`, `shadcn`) was changed 
 
 6. **The first Content Security Policy blocked a local development tool.** It allowed connections only to the app and the API, so the browser refused the websocket an editor extension (Console Ninja) opens to `127.0.0.1` and filled the console with errors. Noticed in the browser console on the first load after adding the policy. Local websockets are now allowed in development only; the production policy is unchanged.
 
-All six were caught by the AI's own checks during the build, not by me afterwards.
+7. **Closing a dialog dropped keyboard focus.** The dialogs are opened from code, so the dialog library had no trigger button to give focus back to, and after any close (even Cancel) the next Tab started from the top of the page. Noticed while testing a narrower fix for focus after a delete: the test showed focus on `<body>` after pressing Escape. Fixed with one small hook, `web/src/hooks/use-return-focus.ts`, used by both dialogs.
 
-After the first version I asked for two follow-ups, which the AI also built: changing a task's status straight from the table (with the status filter), and a security pass (rate limit and response headers).
+All seven were caught by the AI's own checks during the build, not by me afterwards.
+
+After the first version I asked for follow-ups, which the AI also built: changing a task's status straight from the table (with the status filter), a security pass (rate limit and response headers), a warning before unsaved form changes are discarded, and a tab icon.
 
 > **TODO before submitting:** add at least one thing you noticed yourself while reviewing, and how you noticed it.
