@@ -90,6 +90,8 @@ Base URL: `http://localhost:3001`
 | `PATCH` | `/tasks/:id` | `200`, the updated task | `400`, `404` |
 | `DELETE` | `/tasks/:id` | `204`, no body | `404` |
 
+Every endpoint is rate limited to 100 calls per minute per IP address. Over the limit, the API answers `429`.
+
 A task:
 
 ```json
@@ -130,9 +132,27 @@ Errors use NestJS's standard body. `message` is an array for validation errors a
 
 4. **`dueDate` is a date-only string (`YYYY-MM-DD`), not a timestamp.** A due date is a calendar day. Stored as a timestamp, "4 December" turns into "3 December" for anyone whose time zone is behind UTC. The API rejects timestamps and impossible dates such as `2026-02-30`, and the web app builds dates from the parts so they are read as local time.
 
-5. **TanStack Query holds server data, and the list is reloaded after every change.** It supplies the loading, error and retry states the brief asks for. After a create, update or delete (successful or not) the list is fetched again instead of being edited in the browser, so the table always shows what the server has. That costs one extra request per action, which is the right trade for an app this size.
+5. **TanStack Query holds server data, and the list is reloaded after every change.** It supplies the loading, error and retry states the brief asks for. After a create, update or delete (successful or not) the list is fetched again, so the table always shows what the server has. That costs one extra request per action, which is the right trade for an app this size. The one exception is changing a status from the table: that click has no "Saving…" state to wait in, so the badge changes at once (an optimistic update) and goes back, with an error toast, if the API refuses.
 
 Smaller choices: any unknown id answers `404`, including ids that are not UUIDs, because the brief says "404 when a task does not exist". `configureApp()` holds the pipe, security headers and CORS settings so that `main.ts` and the e2e tests use exactly the same setup.
+
+## Security
+
+What is in place:
+
+- **Input.** The API accepts only the fields its DTOs declare and rejects everything else with `400`. Lengths are capped.
+- **Rate limit.** 100 calls per minute per endpoint and IP address (`@nestjs/throttler`). Without it, a script could fill the in-memory store until the process runs out of memory.
+- **CORS.** Browsers may call the API only from the origins in `WEB_ORIGIN`.
+- **Response headers.** `helmet` on the API. On the web app, `web/next.config.ts` sets a Content Security Policy that limits scripts, frames and outgoing connections to the app itself and the API, plus `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`.
+- **Output.** React escapes everything it renders, and the app never uses `dangerouslySetInnerHTML`.
+- **Dependencies.** `npm audit` reports 0 vulnerabilities in both folders (checked 25 November 2026).
+- **Secrets.** There are none. `.env` files are ignored by git, and the only `NEXT_PUBLIC_` value is the API's address.
+
+What is not there, on purpose:
+
+- **No login.** The brief does not ask for users, so anyone who can reach the API can read and change every task. This is fine on `localhost` and would have to change before the app went anywhere public.
+- **No HTTPS or HSTS.** Both apps run over plain HTTP locally. TLS belongs to wherever the app is deployed.
+- **The CSP allows inline scripts** (`'unsafe-inline'`), because Next.js needs them unless every request gets a nonce, which would stop the page being served as static HTML.
 
 ## How I used AI
 
@@ -164,6 +184,10 @@ Code produced by the CLIs (`nest new`, `create-next-app`, `shadcn`) was changed 
 
 5. **A commit message had the co-author line twice.** A shell quoting slip in the AI's `git commit` command. Noticed by reading `git log` straight after, and corrected before anything was pushed.
 
-All five were caught by the AI's own checks during the build, not by me afterwards.
+6. **The first Content Security Policy blocked a local development tool.** It allowed connections only to the app and the API, so the browser refused the websocket an editor extension (Console Ninja) opens to `127.0.0.1` and filled the console with errors. Noticed in the browser console on the first load after adding the policy. Local websockets are now allowed in development only; the production policy is unchanged.
+
+All six were caught by the AI's own checks during the build, not by me afterwards.
+
+After the first version I asked for two follow-ups, which the AI also built: changing a task's status straight from the table (with the status filter), and a security pass (rate limit and response headers).
 
 > **TODO before submitting:** add at least one thing you noticed yourself while reviewing, and how you noticed it.
