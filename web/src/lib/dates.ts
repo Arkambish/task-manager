@@ -7,13 +7,17 @@ const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
 /**
  * Formats a calendar date (`YYYY-MM-DD`) for display, e.g. "Dec 4, 2026".
  *
- * The parts are passed to `new Date(year, month, day)`, which uses local
- * time. `new Date("2026-12-04")` would be read as midnight UTC and show as
+ * The parts are set on a Date using local time.
+ * `new Date("2026-12-04")` would be read as midnight UTC and show as
  * Dec 3 for anyone west of Greenwich.
  */
 export function formatDateOnly(value: string): string {
   const [year, month, day] = value.split("-").map(Number);
-  return dateFormatter.format(new Date(year, month - 1, day));
+  // The multi-argument Date constructor maps years 0–99 to 1900–1999.
+  const date = new Date(0);
+  date.setFullYear(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  return dateFormatter.format(date);
 }
 
 /** Formats an ISO timestamp as a date, e.g. "Nov 23, 2026". */

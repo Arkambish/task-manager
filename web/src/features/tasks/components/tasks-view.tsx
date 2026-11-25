@@ -25,6 +25,7 @@ import { TasksTableSkeleton } from "./tasks-table-skeleton";
 export function TasksView() {
   const tasks = useTasks();
   const changeTaskStatus = useChangeTaskStatus();
+  const pendingStatuses = useRef(new Set<string>());
   const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ALL");
   // When a dialog closes, focus goes back to the button that opened it. If
   // that button is gone (the row of a deleted task), it goes to "New task".
@@ -63,6 +64,8 @@ export function TasksView() {
   // mutateAsync gives one promise per click, so every click gets its own
   // toast even when several statuses are changed in quick succession.
   async function changeStatus(task: Task, status: TaskStatus) {
+    if (pendingStatuses.current.has(task.id)) return;
+    pendingStatuses.current.add(task.id);
     try {
       await changeTaskStatus.mutateAsync({ id: task.id, status });
       toast.success(`Moved to ${STATUS_LABELS[status]}`);
@@ -71,6 +74,8 @@ export function TasksView() {
         description:
           error instanceof ApiError ? error.message : "Something went wrong.",
       });
+    } finally {
+      pendingStatuses.current.delete(task.id);
     }
   }
 

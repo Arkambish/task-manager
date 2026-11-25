@@ -7,6 +7,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useIsTaskStatusPending } from "../hooks";
 import { STATUS_LABELS, TASK_STATUSES, type Task, type TaskStatus } from "../types";
 import { STATUS_STYLES, StatusBadge } from "./status-badge";
 
@@ -20,10 +21,12 @@ interface StatusMenuProps {
  * statuses, so a task can be moved without opening the edit dialog.
  */
 export function StatusMenu({ task, onChange }: StatusMenuProps) {
+  const isPending = useIsTaskStatusPending(task.id);
+
   function handleValueChange(value: string) {
     // The menu only offers the values in TASK_STATUSES, so the cast is safe.
     const status = value as TaskStatus;
-    if (status !== task.status) {
+    if (!isPending && status !== task.status) {
       onChange(task, status);
     }
   }
@@ -36,8 +39,10 @@ export function StatusMenu({ task, onChange }: StatusMenuProps) {
             keeps its size. */}
         <button
           type="button"
+          disabled={isPending}
+          aria-busy={isPending}
           aria-label={`Status of "${task.title}": ${STATUS_LABELS[task.status]}. Change status`}
-          className="-m-2 rounded-full p-2 outline-none transition-opacity hover:opacity-75 focus-visible:opacity-75 [&:focus-visible>span]:ring-3 [&:focus-visible>span]:ring-ring/50"
+          className="disabled:cursor-wait disabled:opacity-60 -m-2 rounded-full p-2 outline-none transition-opacity hover:opacity-75 focus-visible:opacity-75 [&:focus-visible>span]:ring-3 [&:focus-visible>span]:ring-ring/50"
         >
           <StatusBadge status={task.status}>
             <ChevronDown aria-hidden="true" className="opacity-60" />

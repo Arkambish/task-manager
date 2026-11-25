@@ -67,6 +67,7 @@ npm run test:e2e    # every endpoint over HTTP, including the 400 and 404 cases
 npm run lint
 
 cd ../web
+npm test            # regression checks for concurrent updates, requests and dates
 npm run lint
 npm run build
 ```
@@ -159,7 +160,7 @@ To move to a real database, only the repository changes: its four methods would 
 
 4. **`dueDate` is a date-only string (`YYYY-MM-DD`), not a timestamp.** A due date is a calendar day. Stored as a timestamp, "4 December" turns into "3 December" for anyone whose time zone is behind UTC. The API rejects timestamps and impossible dates such as `2026-02-30`, and the web app builds dates from the parts so they are read as local time.
 
-5. **TanStack Query holds server data, and the list is reloaded after every change.** It supplies the loading, error and retry states the brief asks for. After a create, update or delete (successful or not) the list is fetched again, so the table always shows what the server has. That costs one extra request per action, which is the right trade for an app this size. The one exception is changing a status from the table: that click has no "Saving…" state to wait in, so the badge changes at once (an optimistic update) and goes back, with an error toast, if the API refuses.
+5. **TanStack Query holds server data, and the list is reloaded after every change.** It supplies the loading, error and retry states the brief asks for. After a create, update or delete (successful or not), the list is fetched again. When actions overlap, the refresh waits for the last pending mutation so it does not overwrite another task’s optimistic status. The one exception is changing a status from the table: that click has no "Saving…" state to wait in, so the badge changes at once (an optimistic update) and goes back, with an error toast, if the API refuses.
 
 Smaller choices: any unknown id answers `404`, including ids that are not UUIDs, because the brief says "404 when a task does not exist". `configureApp()` holds the pipe, security headers and CORS settings so that `main.ts` and the e2e tests use exactly the same setup.
 
@@ -183,9 +184,9 @@ What is not there, on purpose:
 
 ## How I used AI
 
-**Tool.** Claude Code (Anthropic's coding agent, model Claude Fable 5.2), in VS Code. It was used for all of Section 1 and for nothing in Section 2.
+**Tools.** Claude Code (Anthropic's coding agent, model Claude Fable 5.2), in VS Code, for the original build; Codex for the follow-up fixes documented below. Claude Code was used for all of Section 1 and for nothing in Section 2.
 
-**How it was used.** I gave it the assignment brief. It wrote a plan first (storage, libraries, file layout, how to verify), and I approved the plan before any code existed. It then scaffolded both projects with the official CLIs, wrote the code, the tests and this README, and checked its work by running the tests, calling every endpoint with `curl`, and using the web app in a real browser. Its commits carry a `Co-Authored-By: Claude` line.
+**How it was used.** I gave it the assignment brief. It wrote a plan first (storage, libraries, file layout, how to verify), and I approved the plan before any code existed. It then scaffolded both projects with the official CLIs, wrote the code, the tests and this README, and checked its work by running the tests, calling every endpoint with `curl`, and using the web app in a real browser. Co-author trailers were removed from the local follow-up commits during a later history cleanup; the AI assistance is documented here.
 
 **What was changed in the generated code.**
 
@@ -197,7 +198,7 @@ Code produced by the CLIs (`nest new`, `create-next-app`, `shadcn`) was changed 
 - `create-next-app`'s `.gitignore` ignores `.env*`, which would have left `web/.env.example` out of the repository. An exception was added.
 - Dark styles were switched from a `.dark` class to `prefers-color-scheme`, since there is no theme toggle.
 
-My own part was direction, not typing. I did not edit the generated code by hand. After running the first version I decided what was missing and had the AI change it:
+For the original build, my part was direction and review; the AI implemented the changes. After running the first version I decided what was missing and had the AI change it:
 
 - changing a task's status straight from the table, and the status filter that goes with it;
 - a security pass: the rate limit on the API and the response headers on the web app;
@@ -221,6 +222,20 @@ These are the commits after `aed337f` in the history.
 
 7. **Closing a dialog dropped keyboard focus.** The dialogs are opened from code, so the dialog library had no trigger button to give focus back to, and after any close (even Cancel) the next Tab started from the top of the page. Noticed while testing a narrower fix for focus after a delete: the test showed focus on `<body>` after pressing Escape. Fixed with one small hook, `web/src/hooks/use-return-focus.ts`, used by both dialogs.
 
-All seven were caught by the AI's own checks during the build, not by me.
+The seven examples above were recorded during the original AI-assisted build.
 
-**What I noticed myself.** It was a usability gap, not a bug. Using the first version, I found the app basic and saw there was no quick way to change a task's status: the only route was to open the edit dialog, change the field and save. I noticed it by running the app and trying to move a task. I asked for status to be changeable instantly, which became the status menu in the table (commit `86012d8`).
+**What I noticed myself.** It was a usability gap, not a bug. Using the first version, I found the app basic and saw there was no quick way to change a task's status: the only route was to open the edit dialog, change the field and save. I noticed it by running the app and trying to move a task. I asked for status to be changeable instantly, which became the status menu in the table (commit `60409c2`).
+
+**Follow-up review: two major fixes and three smaller fixes.**
+
+I requested a further review and fixes for two major issues and three smaller ones. Codex identified and implemented the following changes, with automated regression checks.
+
+| Size | Mistake and how it was checked | Fix |
+|---|---|---|
+| Major | A failed status update restored the entire cached task list. A regression test starts updates on two tasks, rejects one and checks that the other task’s status and a concurrent title edit survive. | Roll back only the failed task’s status. Refresh after the last pending mutation, and disable repeat status changes on the same task while its request is pending. |
+| Major | Requests had no timeout, so a stalled connection could leave the form or delete dialog pending indefinitely. Tests simulate a stalled request and response body. | Abort requests after 15 seconds and show a readable error. The timeout message explains that a write might still have reached the server, so the list should be checked before retrying. |
+| Small | Calendar years below 100 displayed as 1900–1999 because of JavaScript’s multi-argument `Date` constructor. Checked with years 0000, 0001 and 0099, plus a modern date. | Set the full year explicitly while preserving local calendar-date formatting. |
+| Small | A trailing slash in `NEXT_PUBLIC_API_URL` produced requests such as `http://localhost:3001//tasks`. Checked the URL passed to `fetch`. | Strip trailing slashes from the configured API base URL. |
+| Small | An HTML or malformed successful response escaped as a raw JSON parsing error. Checked using an HTML response with status 200. | Convert unreadable responses into the same `ApiError` used by the dialogs and alerts. |
+
+Run these checks with `cd web && npm test` using Node.js 24. The tests also cover normal validation errors and empty DELETE responses.

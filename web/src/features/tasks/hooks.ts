@@ -1,11 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiError } from "@/lib/api-client";
 import { createTask, deleteTask, listTasks, updateTask } from "./api";
-import type { Task, TaskInput, TaskStatus } from "./types";
+import type { Task, TaskInput } from "./types";
 
-// The cache key for the task list. Every hook below refers to it, so a
-// change made by one of them is seen by all components that show the list.
-const TASKS_QUERY_KEY = ["tasks"] as const;
+import {
+  TASKS_QUERY_KEY,
+  TASKS_MUTATION_KEY,
+  STATUS_MUTATION_KEY,
+  reloadTasksWhenSettled,
+  statusMutationOptions,
+} from "./status-mutation";
 
 /** Loads the task list. Gives `data`, `isPending`, `error` and `refetch`. */
 export function useTasks() {
@@ -21,13 +25,12 @@ export function useTasks() {
  * The mutations call it in `onSettled`, i.e. after success AND after
  * failure. After a failure the list may be out of date too (for example the
  * task was already deleted in another tab), so the table is always brought
- * back in line with the server. Returning the promise keeps the mutation
- * "pending" until the fresh list has arrived, so a dialog closes onto an
- * up-to-date table.
+ * back in line with the server. Overlapping mutations defer the refresh
+ * until the last one settles, preserving pending optimistic changes.
  */
 function useReloadTasks() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
+  return () => reloadTasksWhenSettled(queryClient);
 }
 
 /**
@@ -37,6 +40,7 @@ function useReloadTasks() {
 export function useSaveTask() {
   const reloadTasks = useReloadTasks();
   return useMutation<Task, ApiError, { id: string | null; input: TaskInput }>({
+    mutationKey: TASKS_MUTATION_KEY,
     mutationFn: ({ id, input }) =>
       id === null ? createTask(input) : updateTask(id, input),
     onSettled: reloadTasks,
@@ -54,45 +58,21 @@ export function useSaveTask() {
  */
 export function useChangeTaskStatus() {
   const queryClient = useQueryClient();
-  const reloadTasks = useReloadTasks();
+  return useMutation(statusMutationOptions(queryClient, updateTask));
+}
 
-  return useMutation<
-    Task,
-    ApiError,
-    { id: string; status: TaskStatus },
-    { previousTasks: Task[] | undefined }
-  >({
-    mutationFn: ({ id, status }) => updateTask(id, { status }),
-
-    // Runs before the request is sent.
-    onMutate: async ({ id, status }) => {
-      // A list request that is already under way would arrive with the old
-      // status and overwrite the change below, so cancel it.
-      await queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
-
-      // Keep the current list so onError can put it back.
-      const previousTasks = queryClient.getQueryData<Task[]>(TASKS_QUERY_KEY);
-
-      queryClient.setQueryData<Task[]>(TASKS_QUERY_KEY, (tasks) =>
-        tasks?.map((task) => (task.id === id ? { ...task, status } : task)),
-      );
-
-      // Whatever is returned here is handed to onError as `context`.
-      return { previousTasks };
-    },
-
-    onError: (_error, _variables, context) => {
-      queryClient.setQueryData(TASKS_QUERY_KEY, context?.previousTasks);
-    },
-
-    // Either way, finish by loading what the server really has.
-    onSettled: reloadTasks,
-  });
+export function useIsTaskStatusPending(id: string) {
+  return useIsMutating({
+    mutationKey: STATUS_MUTATION_KEY,
+    predicate: (mutation) =>
+      (mutation.state.variables as { id?: string } | undefined)?.id === id,
+  }) > 0;
 }
 
 export function useDeleteTask() {
   const reloadTasks = useReloadTasks();
   return useMutation<void, ApiError, string>({
+    mutationKey: TASKS_MUTATION_KEY,
     mutationFn: deleteTask,
     onSettled: reloadTasks,
   });

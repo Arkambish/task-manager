@@ -1,6 +1,6 @@
 // NEXT_PUBLIC_ variables are inlined into the browser bundle at build time,
 // so this must never hold a secret. It is only the address of the API.
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/+$/, "");
 
 /**
  * The one error type the UI has to handle. Every failed request becomes an
@@ -31,30 +31,37 @@ export async function apiRequest<T>(
   path: string,
   { method = "GET", body }: RequestOptions = {},
 ): Promise<T> {
-  let response: Response;
+  const signal = AbortSignal.timeout(15_000);
+  let response: Response | undefined;
   try {
     response = await fetch(`${API_URL}${path}`, {
       method,
+      signal,
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  } catch {
-    // fetch only rejects when there is no response at all: the API is not
-    // running, the network is down, or the browser blocked the call (CORS).
+    if (!response.ok) {
+      throw new ApiError(response.status, await readErrorMessages(response));
+    }
+    // 204 No Content (DELETE) has no body to parse.
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (signal.aborted) {
+      throw new ApiError(0, [
+        "The request timed out. Check the task list before retrying; the server may have saved your change.",
+      ]);
+    }
+    if (response) {
+      throw new ApiError(response.status, [
+        "The API returned an unreadable response. Refresh the task list before trying again.",
+      ]);
+    }
     throw new ApiError(0, [
       `Could not reach the API at ${API_URL}. Check that it is running, then try again.`,
     ]);
   }
-
-  if (!response.ok) {
-    throw new ApiError(response.status, await readErrorMessages(response));
-  }
-
-  // 204 No Content (DELETE) has no body to parse.
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return (await response.json()) as T;
 }
 
 /**
