@@ -56,7 +56,7 @@ Restart the app after changing its file.
 
 ### Database
 
-There is none. Tasks are kept in memory, so the list starts empty and **is cleared whenever the API restarts**. See [Decisions](#decisions) for why.
+There is none, so there is nothing to install, create or migrate. Tasks are kept in memory, so the list starts empty and **is cleared whenever the API restarts**. In watch mode (`npm run start:dev`) that includes every time a file in `api/` is saved. See [How tasks are stored](#how-tasks-are-stored) for the details and [Decisions](#decisions) for why.
 
 ### Tests and checks
 
@@ -122,13 +122,40 @@ Errors use NestJS's standard body. `message` is an array for validation errors a
 { "statusCode": 400, "message": ["title should not be empty"], "error": "Bad Request" }
 ```
 
+## How tasks are stored
+
+Tasks live in the API process's memory, in a JavaScript `Map` (key: task id, value: the task). There is no database and no file on disk.
+
+A request passes through three layers, each with one job:
+
+| Layer | File | Job |
+|---|---|---|
+| Controller | `api/src/tasks/tasks.controller.ts` | HTTP only: reads the request, calls one service method. |
+| Service | `api/src/tasks/tasks.service.ts` | The rules: creates the id (`randomUUID()`), sets `createdAt`, defaults the status to `TODO`, answers `404` for a missing task. |
+| Repository | `api/src/tasks/tasks.repository.ts` | Storage only. The one file that knows tasks are kept in a `Map`. |
+
+The repository has four methods:
+
+- `findAll()` returns every task, oldest first. A `Map` keeps insertion order; the service reverses it so the API answers newest first.
+- `findById(id)` returns one task, or `undefined`.
+- `save(task)` adds a task, or replaces the stored one with the same id.
+- `delete(id)` removes a task and returns `false` when there was none.
+
+What follows from this:
+
+- **Data does not survive a restart.**
+- **It works for one API process only.** Two copies of the API would each have their own list.
+- **Memory is the only limit on size,** which is one reason the API is rate limited.
+
+To move to a real database, only the repository changes: its four methods would call SQLite (through Prisma or TypeORM) and become `async`, and the service would `await` them. The controller, the DTOs, the validation and the web app would stay as they are.
+
 ## Decisions
 
 1. **In-memory storage, behind a repository class.** The brief allows either option. With no database there is no setup step that can fail on the reviewer's machine. The cost is that data does not survive a restart. `TasksRepository` is the only class that knows how tasks are stored, so moving to SQLite later means rewriting its four methods and nothing else.
 
 2. **The API decides what is valid; the form repeats the rules for speed.** DTOs with class-validator run in one global `ValidationPipe`. It has `whitelist` and `forbidNonWhitelisted` on, so a client cannot send fields such as `id` or `createdAt`. The web form has the same limits in a zod schema, only so the user sees a message under the field without waiting for a request. `UpdateTaskDto` is written out by hand instead of using `PartialType(CreateTaskDto)`: `PartialType` makes every field `@IsOptional()`, which also accepts `null`, and that would let `{"title": null}` through.
 
-3. **API errors are shown where the action happened, and never cost the user their input.** `web/src/lib/api-client.ts` turns every failure into one `ApiError` type. That covers an error response from the API (whose `message` can be a string or an array) and no response at all. A failed save keeps the dialog open with the typed values and the API's message above the fields. A failed load shows the message with a "Try again" button. If a refresh fails after tasks were already loaded, the tasks stay on screen under the message. Success is a toast.
+3. **API errors are shown where the action happened, and never cost the user their input.** `web/src/lib/api-client.ts` turns every failure into one `ApiError` type. That covers an error response from the API (whose `message` can be a string or an array) and no response at all. A failed save keeps the dialog open with the typed values and the API's message above the fields. Closing the form with unsaved changes asks for confirmation first. A failed load shows the message with a "Try again" button. If a refresh fails after tasks were already loaded, the tasks stay on screen under the message. Success is a toast.
 
 4. **`dueDate` is a date-only string (`YYYY-MM-DD`), not a timestamp.** A due date is a calendar day. Stored as a timestamp, "4 December" turns into "3 December" for anyone whose time zone is behind UTC. The API rejects timestamps and impossible dates such as `2026-02-30`, and the web app builds dates from the parts so they are read as local time.
 
