@@ -21,10 +21,17 @@ interface DeleteTaskDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The task the user asked to delete. */
   task: Task | null;
+  /** Decides where keyboard focus goes once the dialog has closed. */
+  onCloseAutoFocus: (event: Event) => void;
 }
 
 /** Asks for confirmation before a task is deleted. */
-export function DeleteTaskDialog({ open, onOpenChange, task }: DeleteTaskDialogProps) {
+export function DeleteTaskDialog({
+  open,
+  onOpenChange,
+  task,
+  onCloseAutoFocus,
+}: DeleteTaskDialogProps) {
   const deleteTask = useDeleteTask();
 
   function handleOpenChange(nextOpen: boolean) {
@@ -51,7 +58,7 @@ export function DeleteTaskDialog({ open, onOpenChange, task }: DeleteTaskDialogP
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={onCloseAutoFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this task?</AlertDialogTitle>
           <AlertDialogDescription>

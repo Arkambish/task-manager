@@ -1,10 +1,11 @@
 "use client";
 
 import { ClipboardList, Plus, RotateCw } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiErrorAlert } from "@/components/api-error-alert";
 import { Button } from "@/components/ui/button";
+import { useReturnFocus } from "@/hooks/use-return-focus";
 import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { useChangeTaskStatus, useTasks } from "../hooks";
@@ -25,6 +26,10 @@ export function TasksView() {
   const tasks = useTasks();
   const changeTaskStatus = useChangeTaskStatus();
   const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ALL");
+  // When a dialog closes, focus goes back to the button that opened it. If
+  // that button is gone (the row of a deleted task), it goes to "New task".
+  const newTaskButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogFocus = useReturnFocus(newTaskButtonRef);
 
   // Each dialog has two pieces of state: whether it is open, and which task
   // it is about. They are separate so that closing only flips `open`; the
@@ -36,16 +41,19 @@ export function TasksView() {
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
 
   function openCreateForm() {
+    dialogFocus.rememberFocus();
     setTaskToEdit(null);
     setIsFormOpen(true);
   }
 
   function openEditForm(task: Task) {
+    dialogFocus.rememberFocus();
     setTaskToEdit(task);
     setIsFormOpen(true);
   }
 
   function openDeleteConfirmation(task: Task) {
+    dialogFocus.rememberFocus();
     setTaskToDelete(task);
     setIsDeleteOpen(true);
   }
@@ -113,7 +121,7 @@ export function TasksView() {
             Create, update and track your work.
           </p>
         </div>
-        <Button size="lg" onClick={openCreateForm}>
+        <Button ref={newTaskButtonRef} size="lg" onClick={openCreateForm}>
           <Plus aria-hidden="true" />
           New task
         </Button>
@@ -151,11 +159,13 @@ export function TasksView() {
         open={isFormOpen}
         onOpenChange={setIsFormOpen}
         task={taskToEdit}
+        onCloseAutoFocus={dialogFocus.returnFocus}
       />
       <DeleteTaskDialog
         open={isDeleteOpen}
         onOpenChange={setIsDeleteOpen}
         task={taskToDelete}
+        onCloseAutoFocus={dialogFocus.returnFocus}
       />
     </>
   );

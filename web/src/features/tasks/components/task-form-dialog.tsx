@@ -2,9 +2,20 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { ApiErrorAlert } from "@/components/api-error-alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useReturnFocus } from "@/hooks/use-return-focus";
 import type { ApiError } from "@/lib/api-client";
 import { useSaveTask } from "../hooks";
 import {
@@ -39,22 +51,46 @@ interface TaskFormDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The task to edit, or null to create a new one. */
   task: Task | null;
+  /** Decides where keyboard focus goes once the dialog has closed. */
+  onCloseAutoFocus: (event: Event) => void;
 }
 
 /** The dialog used for both "New task" and "Edit task". */
-export function TaskFormDialog({ open, onOpenChange, task }: TaskFormDialogProps) {
+export function TaskFormDialog({
+  open,
+  onOpenChange,
+  task,
+  onCloseAutoFocus,
+}: TaskFormDialogProps) {
   const saveTask = useSaveTask();
   const isEditing = task !== null;
 
-  // Called by the dialog for Escape, the X button and clicks outside.
+  // Whether the form holds changes that are not saved. TaskForm reports it.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
+  // "Keep editing" puts focus back on the field the user was in.
+  const confirmFocus = useReturnFocus();
+
+  // Called for Escape, the X button, clicks outside and the Cancel button.
   function handleOpenChange(nextOpen: boolean) {
     if (saveTask.isPending) {
       return; // do not close while a save is on its way
+    }
+    if (!nextOpen && hasUnsavedChanges) {
+      confirmFocus.rememberFocus();
+      setIsDiscardConfirmOpen(true); // ask first; a stray Escape loses nothing
+      return;
     }
     if (!nextOpen) {
       saveTask.reset(); // forget a failed save so the next open starts clean
     }
     onOpenChange(nextOpen);
+  }
+
+  function discardChanges() {
+    setIsDiscardConfirmOpen(false);
+    saveTask.reset();
+    onOpenChange(false);
   }
 
   function handleSubmit(values: TaskFormValues) {
@@ -72,28 +108,50 @@ export function TaskFormDialog({ open, onOpenChange, task }: TaskFormDialogProps
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit task" : "New task"}</DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? "Change the details, then save."
-              : "Only the title is required."}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-lg" onCloseAutoFocus={onCloseAutoFocus}>
+          <DialogHeader>
+            <DialogTitle>{isEditing ? "Edit task" : "New task"}</DialogTitle>
+            <DialogDescription>
+              {isEditing
+                ? "Change the details, then save."
+                : "Only the title is required."}
+            </DialogDescription>
+          </DialogHeader>
 
-        {/* DialogContent only exists while the dialog is open, so TaskForm is
-            created again on every open and starts from the current task. */}
-        <TaskForm
-          task={task}
-          isSaving={saveTask.isPending}
-          error={saveTask.error}
-          onSubmit={handleSubmit}
-          onCancel={() => handleOpenChange(false)}
-        />
-      </DialogContent>
-    </Dialog>
+          {/* DialogContent only exists while the dialog is open, so TaskForm is
+              created again on every open and starts from the current task. */}
+          <TaskForm
+            task={task}
+            isSaving={saveTask.isPending}
+            error={saveTask.error}
+            onSubmit={handleSubmit}
+            onCancel={() => handleOpenChange(false)}
+            onUnsavedChange={setHasUnsavedChanges}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Opens on top of the form when the user tries to close it with
+          unsaved changes. "Keep editing" returns to the form as it was. */}
+      <AlertDialog open={isDiscardConfirmOpen} onOpenChange={setIsDiscardConfirmOpen}>
+        <AlertDialogContent onCloseAutoFocus={confirmFocus.returnFocus}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard your changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              What you typed has not been saved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={discardChanges}>
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -104,21 +162,37 @@ interface TaskFormProps {
   error: ApiError | null;
   onSubmit: (values: TaskFormValues) => void;
   onCancel: () => void;
+  /** Called with true once a field differs from its starting value. */
+  onUnsavedChange: (hasUnsavedChanges: boolean) => void;
 }
 
 /** The fields and buttons. Knows nothing about the API. */
-function TaskForm({ task, isSaving, error, onSubmit, onCancel }: TaskFormProps) {
+function TaskForm({
+  task,
+  isSaving,
+  error,
+  onSubmit,
+  onCancel,
+  onUnsavedChange,
+}: TaskFormProps) {
   const {
     register,
     control,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<TaskFormValues>({
     // The zod schema decides what is valid. handleSubmit only calls
     // onSubmit when it passes, and focuses the first invalid field if not.
     resolver: zodResolver(taskFormSchema),
     defaultValues: toFormValues(task),
   });
+
+  // isDirty is true while any field differs from its starting value. The
+  // dialog needs to know, so it can ask before closing. This also runs when
+  // the form first appears, which sets the flag back to false for each open.
+  useEffect(() => {
+    onUnsavedChange(isDirty);
+  }, [isDirty, onUnsavedChange]);
 
   return (
     // noValidate: show our own messages instead of the browser's bubbles.
