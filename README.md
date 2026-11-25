@@ -197,7 +197,13 @@ Code produced by the CLIs (`nest new`, `create-next-app`, `shadcn`) was changed 
 - `create-next-app`'s `.gitignore` ignores `.env*`, which would have left `web/.env.example` out of the repository. An exception was added.
 - Dark styles were switched from a `.dark` class to `prefers-color-scheme`, since there is no theme toggle.
 
-> **TODO before submitting:** replace this note with the changes you made yourself after reading the code. The brief asks what *you* changed, and only you can say.
+My own part was direction, not typing. I did not edit the generated code by hand. After running the first version I decided what was missing and had the AI change it:
+
+- changing a task's status straight from the table, and the status filter that goes with it;
+- a security pass: the rate limit on the API and the response headers on the web app;
+- a warning before unsaved form changes are discarded, focus returning to the right place when a dialog closes, and a tab icon.
+
+These are the commits after `aed337f` in the history.
 
 **Mistakes the AI made, and how each was noticed.**
 
@@ -215,8 +221,6 @@ Code produced by the CLIs (`nest new`, `create-next-app`, `shadcn`) was changed 
 
 7. **Closing a dialog dropped keyboard focus.** The dialogs are opened from code, so the dialog library had no trigger button to give focus back to, and after any close (even Cancel) the next Tab started from the top of the page. Noticed while testing a narrower fix for focus after a delete: the test showed focus on `<body>` after pressing Escape. Fixed with one small hook, `web/src/hooks/use-return-focus.ts`, used by both dialogs.
 
-All seven were caught by the AI's own checks during the build, not by me afterwards.
+All seven were caught by the AI's own checks during the build, not by me.
 
-After the first version I asked for follow-ups, which the AI also built: changing a task's status straight from the table (with the status filter), a security pass (rate limit and response headers), a warning before unsaved form changes are discarded, and a tab icon.
-
-> **TODO before submitting:** add at least one thing you noticed yourself while reviewing, and how you noticed it.
+**What I noticed myself.** It was a usability gap, not a bug. Using the first version, I found the app basic and saw there was no quick way to change a task's status: the only route was to open the edit dialog, change the field and save. I noticed it by running the app and trying to move a task. I asked for status to be changeable instantly, which became the status menu in the table (commit `86012d8`).
