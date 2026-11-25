@@ -10,16 +10,17 @@ import {
 } from "@/components/ui/table";
 import { formatDate, formatDateOnly, formatDateTime, todayDateOnly } from "@/lib/dates";
 import { cn } from "@/lib/utils";
-import type { Task } from "../types";
-import { StatusBadge } from "./status-badge";
+import type { Task, TaskStatus } from "../types";
+import { StatusMenu } from "./status-menu";
 
 interface TasksTableProps {
   tasks: Task[];
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
+  onStatusChange: (task: Task, status: TaskStatus) => void;
 }
 
-export function TasksTable({ tasks, onEdit, onDelete }: TasksTableProps) {
+export function TasksTable({ tasks, onEdit, onDelete, onStatusChange }: TasksTableProps) {
   // Read the clock once per render, not once per row.
   const today = todayDateOnly();
 
@@ -32,6 +33,7 @@ export function TasksTable({ tasks, onEdit, onDelete }: TasksTableProps) {
           today={today}
           onEdit={onEdit}
           onDelete={onDelete}
+          onStatusChange={onStatusChange}
         />
       ))}
     </TasksTableFrame>
@@ -73,9 +75,10 @@ interface TaskRowProps {
   today: string;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
+  onStatusChange: (task: Task, status: TaskStatus) => void;
 }
 
-function TaskRow({ task, today, onEdit, onDelete }: TaskRowProps) {
+function TaskRow({ task, today, onEdit, onDelete, onStatusChange }: TaskRowProps) {
   // YYYY-MM-DD strings sort the same way as the dates they stand for, so a
   // plain string comparison is enough. A finished task is never overdue.
   const isOverdue =
@@ -93,7 +96,7 @@ function TaskRow({ task, today, onEdit, onDelete }: TaskRowProps) {
         )}
         {/* Phones only: status and due date, which have no column there. */}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:hidden">
-          <StatusBadge status={task.status} />
+          <StatusMenu task={task} onChange={onStatusChange} />
           {task.dueDate && (
             <span>
               <span className="text-muted-foreground">Due </span>
@@ -104,7 +107,7 @@ function TaskRow({ task, today, onEdit, onDelete }: TaskRowProps) {
       </TableCell>
 
       <TableCell className="hidden sm:table-cell">
-        <StatusBadge status={task.status} />
+        <StatusMenu task={task} onChange={onStatusChange} />
       </TableCell>
 
       <TableCell className="hidden sm:table-cell">

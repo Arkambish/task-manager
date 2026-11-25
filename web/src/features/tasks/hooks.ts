@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiError } from "@/lib/api-client";
 import { createTask, deleteTask, listTasks, updateTask } from "./api";
-import type { Task, TaskInput } from "./types";
+import type { Task, TaskInput, TaskStatus } from "./types";
 
 // The cache key for the task list. Every hook below refers to it, so a
 // change made by one of them is seen by all components that show the list.
@@ -39,6 +39,53 @@ export function useSaveTask() {
   return useMutation<Task, ApiError, { id: string | null; input: TaskInput }>({
     mutationFn: ({ id, input }) =>
       id === null ? createTask(input) : updateTask(id, input),
+    onSettled: reloadTasks,
+  });
+}
+
+/**
+ * Changes one task's status, optimistically: the table shows the new status
+ * at once, without waiting for the API. If the API then refuses, the table
+ * goes back to how it was.
+ *
+ * The form and the delete dialog do not work this way on purpose. They have
+ * a visible "Saving…" state and can show an error next to what the user
+ * typed. A status click has nowhere to wait, so it has to feel instant.
+ */
+export function useChangeTaskStatus() {
+  const queryClient = useQueryClient();
+  const reloadTasks = useReloadTasks();
+
+  return useMutation<
+    Task,
+    ApiError,
+    { id: string; status: TaskStatus },
+    { previousTasks: Task[] | undefined }
+  >({
+    mutationFn: ({ id, status }) => updateTask(id, { status }),
+
+    // Runs before the request is sent.
+    onMutate: async ({ id, status }) => {
+      // A list request that is already under way would arrive with the old
+      // status and overwrite the change below, so cancel it.
+      await queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
+
+      // Keep the current list so onError can put it back.
+      const previousTasks = queryClient.getQueryData<Task[]>(TASKS_QUERY_KEY);
+
+      queryClient.setQueryData<Task[]>(TASKS_QUERY_KEY, (tasks) =>
+        tasks?.map((task) => (task.id === id ? { ...task, status } : task)),
+      );
+
+      // Whatever is returned here is handed to onError as `context`.
+      return { previousTasks };
+    },
+
+    onError: (_error, _variables, context) => {
+      queryClient.setQueryData(TASKS_QUERY_KEY, context?.previousTasks);
+    },
+
+    // Either way, finish by loading what the server really has.
     onSettled: reloadTasks,
   });
 }

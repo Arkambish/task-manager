@@ -11,10 +11,11 @@ export function createTask(input: TaskInput): Promise<Task> {
   return apiRequest<Task>("/tasks", { method: "POST", body: input });
 }
 
-export function updateTask(id: string, input: TaskInput): Promise<Task> {
+/** Sends only the fields in `changes`; the API leaves the others as they are. */
+export function updateTask(id: string, changes: Partial<TaskInput>): Promise<Task> {
   return apiRequest<Task>(`/tasks/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    body: input,
+    body: changes,
   });
 }
 

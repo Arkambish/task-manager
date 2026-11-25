@@ -2,12 +2,20 @@
 
 import { ClipboardList, Plus, RotateCw } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { ApiErrorAlert } from "@/components/api-error-alert";
 import { Button } from "@/components/ui/button";
+import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { useTasks } from "../hooks";
-import type { Task } from "../types";
+import { useChangeTaskStatus, useTasks } from "../hooks";
+import { STATUS_LABELS, type Task, type TaskStatus } from "../types";
 import { DeleteTaskDialog } from "./delete-task-dialog";
+import {
+  FILTER_LABELS,
+  StatusFilter,
+  filterTasks,
+  type StatusFilterValue,
+} from "./status-filter";
 import { TaskFormDialog } from "./task-form-dialog";
 import { TasksTable } from "./tasks-table";
 import { TasksTableSkeleton } from "./tasks-table-skeleton";
@@ -15,6 +23,8 @@ import { TasksTableSkeleton } from "./tasks-table-skeleton";
 /** The whole tasks screen: heading, the list in its current state, dialogs. */
 export function TasksView() {
   const tasks = useTasks();
+  const changeTaskStatus = useChangeTaskStatus();
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("ALL");
 
   // Each dialog has two pieces of state: whether it is open, and which task
   // it is about. They are separate so that closing only flips `open`; the
@@ -40,6 +50,22 @@ export function TasksView() {
     setIsDeleteOpen(true);
   }
 
+  // The table has already changed by the time this runs (see
+  // useChangeTaskStatus). What is left is to tell the user how it ended.
+  // mutateAsync gives one promise per click, so every click gets its own
+  // toast even when several statuses are changed in quick succession.
+  async function changeStatus(task: Task, status: TaskStatus) {
+    try {
+      await changeTaskStatus.mutateAsync({ id: task.id, status });
+      toast.success(`Moved to ${STATUS_LABELS[status]}`);
+    } catch (error) {
+      toast.error("Couldn't change the status", {
+        description:
+          error instanceof ApiError ? error.message : "Something went wrong.",
+      });
+    }
+  }
+
   function renderTaskList() {
     // isPending means "no data yet and no error yet": the first load.
     if (tasks.isPending) {
@@ -52,12 +78,29 @@ export function TasksView() {
     if (tasks.data.length === 0) {
       return <EmptyState onCreate={openCreateForm} />;
     }
+
+    const visibleTasks = filterTasks(tasks.data, statusFilter);
     return (
-      <TasksTable
-        tasks={tasks.data}
-        onEdit={openEditForm}
-        onDelete={openDeleteConfirmation}
-      />
+      <>
+        <StatusFilter
+          tasks={tasks.data}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
+        {visibleTasks.length === 0 ? (
+          <NoMatches
+            filter={statusFilter}
+            onShowAll={() => setStatusFilter("ALL")}
+          />
+        ) : (
+          <TasksTable
+            tasks={visibleTasks}
+            onEdit={openEditForm}
+            onDelete={openDeleteConfirmation}
+            onStatusChange={changeStatus}
+          />
+        )}
+      </>
     );
   }
 
@@ -67,7 +110,7 @@ export function TasksView() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {tasks.data ? summarize(tasks.data) : "Create, update and track your work."}
+            Create, update and track your work.
           </p>
         </div>
         <Button size="lg" onClick={openCreateForm}>
@@ -118,14 +161,23 @@ export function TasksView() {
   );
 }
 
-/** "3 tasks · 1 done" */
-function summarize(tasks: Task[]): string {
-  if (tasks.length === 0) {
-    return "No tasks yet.";
-  }
-  const done = tasks.filter((task) => task.status === "DONE").length;
-  const noun = tasks.length === 1 ? "task" : "tasks";
-  return `${tasks.length} ${noun} · ${done} done`;
+interface NoMatchesProps {
+  filter: StatusFilterValue;
+  onShowAll: () => void;
+}
+
+/** Shown when there are tasks, but none with the status being filtered on. */
+function NoMatches({ filter, onShowAll }: NoMatchesProps) {
+  return (
+    <div className="flex flex-col items-center rounded-xl border border-dashed px-6 py-12 text-center">
+      <p className="text-sm text-muted-foreground">
+        No tasks are marked “{FILTER_LABELS[filter]}”.
+      </p>
+      <Button variant="outline" className="mt-4" onClick={onShowAll}>
+        Show all tasks
+      </Button>
+    </div>
+  );
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {

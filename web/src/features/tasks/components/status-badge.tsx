@@ -5,7 +5,7 @@ import { STATUS_LABELS, type TaskStatus } from "../types";
 
 // Each status has its own icon as well as its own colour, so the badge can
 // still be told apart by people who do not see the colours.
-const STATUS_STYLES: Record<TaskStatus, { icon: LucideIcon; className: string }> = {
+export const STATUS_STYLES: Record<TaskStatus, { icon: LucideIcon; className: string }> = {
   TODO: {
     icon: Circle,
     className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -20,13 +20,20 @@ const STATUS_STYLES: Record<TaskStatus, { icon: LucideIcon; className: string }>
   },
 };
 
-export function StatusBadge({ status }: { status: TaskStatus }) {
+interface StatusBadgeProps {
+  status: TaskStatus;
+  /** Extra content after the label, e.g. the chevron of the status menu. */
+  children?: React.ReactNode;
+}
+
+export function StatusBadge({ status, children }: StatusBadgeProps) {
   const { icon: Icon, className } = STATUS_STYLES[status];
 
   return (
     <Badge variant="outline" className={cn("border-transparent", className)}>
       <Icon aria-hidden="true" />
       {STATUS_LABELS[status]}
+      {children}
     </Badge>
   );
 }
