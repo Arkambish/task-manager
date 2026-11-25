@@ -25,8 +25,10 @@ export function ApiErrorAlert({ title, error, children }: ApiErrorAlertProps) {
         ) : (
           // Validation errors: one line per invalid field.
           <ul className="list-disc pl-4">
-            {error.messages.map((message) => (
-              <li key={message}>{message}</li>
+            {/* The index is the key because two messages can have the same
+                text, and this list is never reordered. */}
+            {error.messages.map((message, index) => (
+              <li key={index}>{message}</li>
             ))}
           </ul>
         )}
